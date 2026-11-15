@@ -179,6 +179,13 @@ Sample JSON output:
   }
 }
 
+const MODEL_RANK: Record<string, number> = {
+  'gpt-6-luna': 0,
+  'gpt-6.1-terra': 1,
+  'gpt-6.1-sol': 2,
+  'gpt-6-astra': 3,
+}
+
 const ChatInterface: React.FC<ChatInterfaceProps> = ({
   apiKey,
   setApiKey,
@@ -262,40 +269,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const containerRef = useRef<HTMLDivElement>(null)
   const contextMenuRef = useRef<HTMLDivElement>(null)
   const autoThinkingTriggered = useRef(false)
-  const autoMiniTriggered = useRef(false)       // new
-  const autoFullTriggered = useRef(false)       // new
+  const autoTerraTriggered = useRef(false)
+  const autoSolTriggered = useRef(false)
   const slLastSetModel = useRef<string>('')     // tracks what SL system last set
 
 
-  // Filter available models based on chat mode and provider
-  // const getAvailableModels = () => {
-  //   const openaiModels = [
-  //     'gpt-5', 'gpt-5-mini', 'gpt-5-nano'
-  //   ]
-  //
-  //   const togetherModels = [
-  //     'deepseek-ai/DeepSeek-R1', 'deepseek-ai/DeepSeek-V3.1', 'deepseek-ai/DeepSeek-V3',
-  //     'meta-llama/Llama-3.3-70B-Instruct-Turbo',
-  //     'openai/gpt-oss-20b', 'openai/gpt-oss-120b', 'moonshotai/Kimi-K2-Instruct-0905',
-  //     'Qwen/Qwen3-Next-80B-A3B-Thinking'
-  //   ]
-  //
-  //   // Filter by provider first
-  //   let availableModels = selectedProvider === 'together' ? togetherModels : openaiModels
-  //
-  //   if (chatMode === 'topic-explorer') {
-  //     // Only allow specific models for Topic Explorer mode
-  //     if (selectedProvider === 'together') {
-  //       return ['deepseek-ai/DeepSeek-V3', 'deepseek-ai/DeepSeek-R1','meta-llama/Llama-3.3-70B-Instruct-Turbo']
-  //     } else {
-  //       return ['gpt-5']
-  //     }
-  //   }
-  //
-  //   return availableModels
-  // }
-
-  // const availableModels = getAvailableModels()
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
@@ -433,17 +411,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
   }, [topicExplorerEnabled, docQaEnabled, studyLearnEnabled])
 
-  // Auto-switch to gpt-5-nano when Study & Learn is enabled, then upgrade progressively
+  // Auto-switch to gpt-6-luna when Study & Learn is enabled, then upgrade progressively
   useEffect(() => {
     if (studyLearnEnabled) {
-      slLastSetModel.current = 'gpt-5-nano'
-      setSelectedModel('gpt-5-nano')
+      slLastSetModel.current = 'gpt-6-luna'
+      setSelectedModel('gpt-6-luna')
       setSelectedProvider('openai')
       setStudyLearnOverride(true)
       // Reset progression refs when re-enabling
       autoThinkingTriggered.current = false
-      autoMiniTriggered.current = false
-      autoFullTriggered.current = false
+      autoTerraTriggered.current = false
+      autoSolTriggered.current = false
       // Also reset thinking — Study & Learn starts with thinking off (it auto-enables at turn 3)
       setThinkingEnabled(false)
       setThinkingEffort('medium')
@@ -488,9 +466,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
   }, [apiKey, showApiKeySuccess])
 
-  // Model rank for one-directional upgrades (never downgrade)
-  const MODEL_RANK: Record<string, number> = { 'gpt-5-nano': 0, 'gpt-5-mini': 1, 'gpt-5': 2 }
-
   // Progressive model upgrades for Study & Learn
   useEffect(() => {
     if (!studyLearnEnabled) return
@@ -498,25 +473,25 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     const userMessageCount = messages.filter(m => m.role === 'user').length
     const currentRank = MODEL_RANK[selectedModel] ?? 0
 
-    // Turn 3+: upgrade to gpt-5-mini (only if current model is lower ranked)
-    if (userMessageCount >= 3 && !autoMiniTriggered.current) {
-      if (currentRank < MODEL_RANK['gpt-5-mini']) {
-        setSelectedModel('gpt-5-mini')
+    // Turn 3+: upgrade to gpt-6.1-terra (only if current model is lower ranked)
+    if (userMessageCount >= 3 && !autoTerraTriggered.current) {
+      if (currentRank < MODEL_RANK['gpt-6.1-terra']) {
+        setSelectedModel('gpt-6.1-terra')
       }
       if (!autoThinkingTriggered.current) {
         setThinkingEnabled(true)
         setThinkingEffort('high')
         autoThinkingTriggered.current = true
       }
-      autoMiniTriggered.current = true
+      autoTerraTriggered.current = true
     }
 
-    // Turn 5+: upgrade to gpt-5 (only if current model is lower ranked)
-    if (userMessageCount >= 5 && !autoFullTriggered.current) {
-      if (currentRank < MODEL_RANK['gpt-5']) {
-        setSelectedModel('gpt-5')
+    // Turn 5+: upgrade to gpt-6.1-sol (only if current model is lower ranked)
+    if (userMessageCount >= 5 && !autoSolTriggered.current) {
+      if (currentRank < MODEL_RANK['gpt-6.1-sol']) {
+        setSelectedModel('gpt-6.1-sol')
       }
-      autoFullTriggered.current = true
+      autoSolTriggered.current = true
     }
   }, [messages, studyLearnEnabled, selectedModel, setSelectedModel])
 
@@ -1323,14 +1298,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     setUploadedDocument(null)
     setDocQaEnabled(false)
     autoThinkingTriggered.current = false
-    autoMiniTriggered.current = false
-    autoFullTriggered.current = false
+    autoTerraTriggered.current = false
+    autoSolTriggered.current = false
     slLastSetModel.current = ''
     setThinkingEffort('medium')
 
     // Reset model and thinking when Study & Learn is enabled
     if (studyLearnEnabled) {
-      setSelectedModel('gpt-5-nano')
+      setSelectedModel('gpt-6-luna')
       setThinkingEnabled(false)
     }
   }

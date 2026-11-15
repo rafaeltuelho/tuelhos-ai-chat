@@ -2,7 +2,7 @@
 Shared OpenAI request helper for chat, RAG, and topic explorer modes.
 
 Provides a unified interface for OpenAI requests that:
-- Supports opt-in web search for GPT-5 models via Responses API
+- Supports opt-in web search via the OpenAI Responses API
 - Supports both streaming and non-streaming responses
 - Works with Together.ai provider (no web search, uses Chat Completions API)
 - Normalizes output for different use cases
@@ -12,13 +12,15 @@ from openai import OpenAI
 from typing import List, Dict, Any, Optional, Iterator, Union
 
 
-# GPT-5 models that support web search via Responses API
-GPT5_WEB_SEARCH_MODELS = ["gpt-5", "gpt-5-mini", "gpt-5-nano"]
+DEFAULT_OPENAI_MODEL = "gpt-6-luna"
+GPT6_MODELS = (DEFAULT_OPENAI_MODEL, "gpt-6.1-terra", "gpt-6.1-sol", "gpt-6-astra")
+# Keep accepting older IDs for existing API callers and FREE_MODEL configurations.
+OPENAI_RESPONSES_MODELS = (*GPT6_MODELS, "gpt-5", "gpt-5-mini", "gpt-5-nano")
 
 
-def _supports_web_search(provider: str, model: str) -> bool:
-    """Check if the model supports web search."""
-    return provider == "openai" and model in GPT5_WEB_SEARCH_MODELS
+def uses_responses_api(provider: str, model: str) -> bool:
+    """Identify requests that use the Responses API."""
+    return provider == "openai" and model in OPENAI_RESPONSES_MODELS
 
 
 def create_openai_client(api_key: str, provider: str) -> OpenAI:
@@ -113,9 +115,9 @@ def create_openai_request(
     **kwargs
 ) -> Union[Any, Iterator[Any]]:
     """
-    Create an OpenAI request with automatic web search support for GPT-5 models.
+    Create a request with optional web search for supported OpenAI models.
 
-    For GPT-5 models with OpenAI provider, uses Responses API and can opt into web_search.
+    Uses the Responses API for supported OpenAI models.
     For other models and Together.ai, uses Chat Completions API without web search.
 
     Args:
@@ -135,9 +137,9 @@ def create_openai_request(
     """
     client = create_openai_client(api_key, provider)
 
-    # For OpenAI GPT-5 models, use Responses API. Web search is opt-in because
+    # Web search is opt-in because
     # tool orchestration can add noticeable first-token latency to plain chat.
-    if _supports_web_search(provider, model):
+    if uses_responses_api(provider, model):
         # Convert messages to Responses API input format (with optional image).
         # System/developer content is passed separately through `instructions`.
         input_data = _messages_to_responses_input(messages, image_data_url)
@@ -166,7 +168,6 @@ def create_openai_request(
         if include is not None:
             request_params["include"] = include
 
-        # Use Responses API for GPT-5 models with web search
         return client.responses.create(**request_params)
     else:
         # For Together.ai and other models, use Chat Completions API

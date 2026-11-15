@@ -881,7 +881,7 @@ async def test_upload_document_generates_summary_without_openai_response_format(
     assert len(data["suggested_questions"]) == 5
 
     run_kwargs = mock_chat_model.return_value.run.call_args.kwargs
-    assert run_kwargs["model_name"] == "gpt-5-mini"
+    assert run_kwargs["model_name"] == "gpt-6-luna"
     assert run_kwargs["web_search"] is False
     assert "response_format" not in run_kwargs
 
@@ -996,7 +996,7 @@ def test_count_tokens_fallback():
     """Test count_tokens() fallback when encoding fails."""
     # Use an invalid model to trigger fallback
     text = "Hello, world!"
-    with patch('app.tiktoken.encoding_for_model', side_effect=Exception("Test error")):
+    with patch('context_manager.tiktoken.encoding_for_model', side_effect=Exception("Test error")):
         token_count = count_tokens(text, model="invalid-model")
         # Fallback uses len(text) // 4
         expected = len(text) // 4
@@ -2122,8 +2122,10 @@ def test_chat_request_image_attachment_model_validation():
     valid_data_url = f"data:image/png;base64,{small_png}"
     attachment = ImageAttachment(mime_type="image/png", data_url=valid_data_url)
 
-    # GPT-5 models should work
-    for model in ["gpt-5", "gpt-5-mini", "gpt-5-nano"]:
+    for model in [
+        "gpt-6-luna", "gpt-6.1-terra", "gpt-6.1-sol", "gpt-6-astra",
+        "gpt-5", "gpt-5-mini", "gpt-5-nano",
+    ]:
         request = ChatRequest(
             user_message="Test",
             developer_message="System",
@@ -2158,7 +2160,7 @@ async def test_chat_with_image_attachment(client, clean_state, mock_session):
             json={
                 "user_message": "What's in this image?",
                 "developer_message": "You are a helpful assistant.",
-                "model": "gpt-5-mini",
+                "model": "gpt-6-astra",
                 "provider": "openai",
                 "image_attachment": {
                     "mime_type": "image/png",
@@ -2170,10 +2172,12 @@ async def test_chat_with_image_attachment(client, clean_state, mock_session):
         )
 
         assert response.status_code == 200
+        assert response.text == "Test response with image"
 
         # Verify helper was called with image_data_url
         assert mock_helper.called
         call_kwargs = mock_helper.call_args[1]
+        assert call_kwargs["model"] == "gpt-6-astra"
         assert call_kwargs["image_data_url"] == valid_data_url
 
 

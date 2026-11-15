@@ -1,4 +1,4 @@
-from openai import OpenAI
+from openai import AsyncOpenAI
 from dotenv import load_dotenv
 import os
 import sys
@@ -11,7 +11,7 @@ api_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'api')
 if api_dir not in sys.path:
     sys.path.insert(0, api_dir)
 
-from openai_helper import create_openai_request
+from openai_helper import DEFAULT_OPENAI_MODEL, create_openai_request, uses_responses_api
 
 
 class ChatOpenAI:
@@ -35,11 +35,11 @@ class ChatOpenAI:
         else:
             self.base_url = None  # Use default OpenAI base URL
 
-    def run(self, messages, model_name: str = "gpt-5-mini", text_only: bool = True, **kwargs):
+    def run(self, messages, model_name: str = DEFAULT_OPENAI_MODEL, text_only: bool = True, **kwargs):
         if not isinstance(messages, list):
             raise ValueError("messages must be a list")
 
-        # Use the shared helper: Responses API for GPT-5 models, Chat Completions
+        # Use the shared helper: Responses API for supported OpenAI models, Chat Completions
         # API for others. Web search is opt-in via kwargs.
         response = create_openai_request(
             api_key=self.api_key,
@@ -59,7 +59,7 @@ class ChatOpenAI:
 
         return response
 
-    async def arun(self, messages, model_name: str = "gpt-5-mini", text_only: bool = True, **kwargs):
+    async def arun(self, messages, model_name: str = DEFAULT_OPENAI_MODEL, text_only: bool = True, **kwargs):
         """Async version of run method."""
         if not isinstance(messages, list):
             raise ValueError("messages must be a list")
@@ -69,17 +69,12 @@ class ChatOpenAI:
         if self.base_url:
             client_kwargs["base_url"] = self.base_url
 
-        client = OpenAI(**client_kwargs)
-
-        # Check if this is a GPT-5 model that supports web search
-        GPT5_WEB_SEARCH_MODELS = ["gpt-5", "gpt-5-mini", "gpt-5-nano"]
-        is_gpt5_with_web_search = self.provider == "openai" and model_name in GPT5_WEB_SEARCH_MODELS
+        client = AsyncOpenAI(**client_kwargs)
 
         # Pop web_search from kwargs so it's never forwarded raw to the API
         web_search = kwargs.pop("web_search", None)
 
-        if is_gpt5_with_web_search:
-            # For GPT-5 models, use Responses API
+        if uses_responses_api(self.provider, model_name):
             if len(messages) == 1:
                 input_text = messages[0]["content"]
             else:

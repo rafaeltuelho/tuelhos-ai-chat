@@ -290,6 +290,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
               className="settings-select"
               disabled={!isWhitelisted && hasFreeTurns && !apiKey.trim()}
             >
+              {!Object.prototype.hasOwnProperty.call(modelDescriptions, selectedModel) && (
+                <option value={selectedModel}>{selectedModel}</option>
+              )}
               {Object.entries(modelDescriptions)
                 .filter(([key]) => {
                   if (selectedProvider === 'together') {

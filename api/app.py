@@ -27,7 +27,6 @@ from slowapi.util import get_remote_address
 # Import Google OAuth libraries
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
-import tiktoken
 from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
@@ -53,10 +52,12 @@ from persistence import (
     delete_session,
 )
 from context_manager import (
-    should_compress, compress_conversation, count_conversation_tokens,
+    should_compress, compress_conversation, count_conversation_tokens, count_tokens,
     SUMMARY_PREFIX,
 )
-from openai_helper import create_openai_request
+from openai_helper import (
+    DEFAULT_OPENAI_MODEL, OPENAI_RESPONSES_MODELS, create_openai_request, uses_responses_api,
+)
 
 # ============================================
 # Google OAuth Configuration
@@ -410,23 +411,6 @@ def get_session(session_id: str) -> Optional[Dict[str, Any]]:
 
     return None
 
-def count_tokens(text: str, model: str = "gpt-5") -> int:
-    """Count the number of tokens in a text string.
-
-    Args:
-        text: The text to count tokens for
-        model: The model to use for tokenization (default: "gpt-5")
-
-    Returns:
-        Number of tokens in the text
-    """
-    try:
-        encoding = tiktoken.encoding_for_model(model)
-        return len(encoding.encode(text))
-    except Exception:
-        # Fallback to approximate token count if encoding fails
-        return len(text) // 4
-
 def resolve_api_key(session_id: str, user_api_key: Optional[str] = None, provider: Optional[str] = None) -> tuple[str, str]:
     """Resolve which API key to use based on session and user input.
 
@@ -587,7 +571,7 @@ class ChatRequest(BaseModel):
     conversation_id: Optional[str] = None  # ID to continue existing conversation
     developer_message: str  # Message from the developer/system
     user_message: str      # Message from the user
-    model: Optional[str] = "gpt-5-mini"  # Optional model selection with default
+    model: Optional[str] = DEFAULT_OPENAI_MODEL  # Optional model selection with default
     api_key: Optional[str] = None  # API key for authentication (optional, can use session's key or server key)
     provider: Optional[str] = "openai"  # Provider selection: "openai" or "together"
     image_attachment: Optional[ImageAttachment] = None  # Optional image attachment for OpenAI GPT models
@@ -659,12 +643,7 @@ class ChatRequest(BaseModel):
     def validate_model(cls, v):
         """Validate model selection"""
         if not v:
-            return "gpt-5-mini"  # Default model
-
-        # List of allowed models for OpenAI (GPT-5 family only)
-        openai_models = [
-            "gpt-5", "gpt-5-mini", "gpt-5-nano"
-        ]
+            return DEFAULT_OPENAI_MODEL
 
         # List of allowed models for Together.ai
         together_models = [
@@ -674,7 +653,7 @@ class ChatRequest(BaseModel):
             "Qwen/Qwen3-Next-80B-A3B-Thinking"
         ]
 
-        all_models = openai_models + together_models
+        all_models = [*OPENAI_RESPONSES_MODELS, *together_models]
 
         if v not in all_models:
             raise ValueError(f'Invalid model: {v}. Allowed models: {", ".join(all_models)}')
@@ -756,10 +735,8 @@ class ChatRequest(BaseModel):
             if self.provider != "openai":
                 raise ValueError('Image attachments are only supported with OpenAI provider')
 
-            # Only allow for GPT models (GPT-5 family)
-            openai_models = ["gpt-5", "gpt-5-mini", "gpt-5-nano"]
-            if self.model not in openai_models:
-                raise ValueError(f'Image attachments are only supported with OpenAI GPT models: {", ".join(openai_models)}')
+            if self.model not in OPENAI_RESPONSES_MODELS:
+                raise ValueError(f'Image attachments are only supported with OpenAI GPT models: {", ".join(OPENAI_RESPONSES_MODELS)}')
 
         return self
 
@@ -905,7 +882,7 @@ class RAGQueryRequest(BaseModel):
     question: str
     developer_message: str  # System message from the developer/UI
     k: Optional[int] = 5  # Number of relevant chunks to retrieve
-    model: Optional[str] = "gpt-5"  # Model selection for RAG queries
+    model: Optional[str] = DEFAULT_OPENAI_MODEL  # Model selection for RAG queries
     mode: Optional[str] = "rag"  # RAG mode: "rag" or "topic-explorer"
     provider: Optional[str] = "openai"  # Provider selection: "openai" or "together"
     
@@ -956,12 +933,7 @@ class RAGQueryRequest(BaseModel):
     def validate_model(cls, v):
         """Validate model selection"""
         if not v:
-            return "gpt-5-mini"  # Default model
-
-        # List of allowed models for OpenAI (GPT-5 family only)
-        openai_models = [
-            "gpt-5", "gpt-5-mini", "gpt-5-nano"
-        ]
+            return DEFAULT_OPENAI_MODEL
 
         # List of allowed models for Together.ai
         together_models = [
@@ -971,7 +943,7 @@ class RAGQueryRequest(BaseModel):
             "Qwen/Qwen3-Next-80B-A3B-Thinking"
         ]
 
-        all_models = openai_models + together_models
+        all_models = [*OPENAI_RESPONSES_MODELS, *together_models]
 
         if v not in all_models:
             raise ValueError(f'Invalid model: {v}. Allowed models: {", ".join(all_models)}')
@@ -1341,7 +1313,7 @@ def _fetch_suggestions() -> List[str]:
             model = "deepseek-ai/DeepSeek-V3.1"
         else:
             base_url = "https://api.openai.com/v1"
-            model = "gpt-5-mini"
+            model = DEFAULT_OPENAI_MODEL
 
         # Create OpenAI client
         client = OpenAI(api_key=api_key, base_url=base_url)
@@ -1359,8 +1331,11 @@ def _fetch_suggestions() -> List[str]:
                     "content": "Generate 3 diverse, interesting, and VERY short (under 6 words each) conversation starter questions or prompts that a user might ask an AI assistant. Use catchy sentences. Return ONLY a JSON array of strings, nothing else. Example: [\"Tell me a joke\", \"Explain quantum physics\", \"Write a poem\"]"
                 }
             ],
-            temperature=0.8,
-            max_tokens=200
+            **(
+                {"temperature": 0.8, "max_tokens": 200}
+                if SERVER_TOGETHER_API_KEY
+                else {"reasoning_effort": "none", "max_completion_tokens": 200}
+            )
         )
 
         # Extract response content
@@ -1514,7 +1489,7 @@ async def text_to_speech(
         if len(tts_text) > TTS_CHAR_LIMIT:
             try:
                 summary_response = client.chat.completions.create(
-                    model="gpt-5-mini",
+                    model=DEFAULT_OPENAI_MODEL,
                     messages=[
                         {
                             "role": "system",
@@ -1530,8 +1505,8 @@ async def text_to_speech(
                             "content": tts_text
                         }
                     ],
-                    temperature=0.5,
-                    max_tokens=1500
+                    reasoning_effort="none",
+                    max_completion_tokens=1500
                 )
                 summary_text = summary_response.choices[0].message.content.strip()
                 tts_text = _truncate_at_boundary(summary_text, TTS_CHAR_LIMIT)
@@ -1857,7 +1832,7 @@ async def chat(
                     image_data_url = chat_request.image_attachment.data_url
 
                 # Create a streaming chat completion request using the helper
-                # This automatically enables web search for GPT-5 models via Responses API
+                # Supported OpenAI models can opt into web search via Responses API
                 stream = create_openai_request(
                     api_key=api_key,
                     provider=chat_request.provider,
@@ -1873,9 +1848,9 @@ async def chat(
                 # Collect the full response for storage
                 full_response = ""
 
-                # Determine if this is a Responses API stream (GPT-5 with web search)
+                # Determine if this is a Responses API stream
                 # or Chat Completions API stream (Together.ai or other models)
-                is_responses_api = chat_request.provider == "openai" and chat_request.model in ["gpt-5", "gpt-5-mini", "gpt-5-nano"]
+                is_responses_api = uses_responses_api(chat_request.provider, chat_request.model)
 
                 # Track reasoning state for proper marker placement
                 in_reasoning = False
@@ -2259,7 +2234,7 @@ async def upload_document(
                     kwargs["response_format"] = {"type": "json_object"}
                 chat_model = ChatOpenAI(api_key=api_key, provider=provider)
                 response = chat_model.run(
-                    model_name="gpt-5-mini" if provider == "openai" else "deepseek-ai/DeepSeek-V3.1",
+                    model_name=DEFAULT_OPENAI_MODEL if provider == "openai" else "deepseek-ai/DeepSeek-V3.1",
                     messages=[
                         {"role": "system", "content": system_message},
                         {"role": "user", "content": user_message}

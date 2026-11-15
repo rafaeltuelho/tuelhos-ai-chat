@@ -71,7 +71,7 @@ The server will start on `http://localhost:8000`
 {
     "developer_message": "string",
     "user_message": "string",
-    "model": "gpt-4.1-mini",  // optional
+    "model": "gpt-6-luna",  // optional
     "api_key": "your-openai-api-key"
 }
 ```

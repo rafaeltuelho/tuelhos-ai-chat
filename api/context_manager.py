@@ -9,10 +9,13 @@ import os
 import tiktoken
 from typing import Any, Dict, List, Optional
 
+from openai_helper import DEFAULT_OPENAI_MODEL, GPT6_MODELS
+
 # ============================================
 # Model Context Window Sizes (tokens)
 # ============================================
 MODEL_CONTEXT_WINDOWS: Dict[str, int] = {
+    **dict.fromkeys(GPT6_MODELS, 1_050_000),
     # GPT-5 family (1M context)
     "gpt-5": 1_048_576,
     "gpt-5-mini": 1_048_576,
@@ -46,10 +49,16 @@ def _to_dict(msg) -> Dict[str, str]:
     return {"role": getattr(msg, "role", "user"), "content": getattr(msg, "content", "")}
 
 
-def _count_tokens(text: str, model: str = "gpt-5") -> int:
+def count_tokens(text: str, model: str = DEFAULT_OPENAI_MODEL) -> int:
     """Count tokens in a text string using tiktoken."""
     try:
-        encoding = tiktoken.encoding_for_model(model)
+        try:
+            encoding = tiktoken.encoding_for_model(model)
+        except KeyError:
+            if model not in GPT6_MODELS:
+                raise
+            # The installed tiktoken has no GPT-6 mapping. Estimate with GPT-5's encoding.
+            encoding = tiktoken.get_encoding("o200k_base")
         return len(encoding.encode(text))
     except Exception:
         return len(text) // 4
@@ -80,10 +89,10 @@ def count_conversation_tokens(messages: List[Any], system_message: str, model: s
     Returns:
         Total token count.
     """
-    total = _count_tokens(system_message, model)
+    total = count_tokens(system_message, model)
     for msg in messages:
         content = msg.content if hasattr(msg, "content") else msg.get("content", "")
-        total += _count_tokens(content, model)
+        total += count_tokens(content, model)
         total += 4  # Per-message overhead (role, delimiters)
     return total
 
@@ -152,7 +161,7 @@ def compress_conversation(
 
     try:
         summary_response = client.chat.completions.create(
-            model=model,
+            model=DEFAULT_OPENAI_MODEL if model in GPT6_MODELS else model,
             messages=[
                 {
                     "role": "system",
@@ -169,8 +178,12 @@ def compress_conversation(
                     "content": f"Summarize this conversation:\n\n{conversation_text}",
                 },
             ],
-            max_tokens=1000,
             stream=False,
+            **(
+                {"reasoning_effort": "none", "max_completion_tokens": 1000}
+                if model in GPT6_MODELS
+                else {"max_tokens": 1000}
+            ),
         )
 
         summary_text = summary_response.choices[0].message.content.strip()
@@ -183,7 +196,7 @@ def compress_conversation(
 
         print(
             f"Compressed {len(to_summarize)} messages into summary "
-            f"({_count_tokens(summary_text, model)} tokens)"
+            f"({count_tokens(summary_text, model)} tokens)"
         )
 
         return [summary_msg] + [

@@ -22,6 +22,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from aimakerspace.vectordatabase import VectorDatabase
 from aimakerspace.openai_utils.embedding import EmbeddingModel
 from aimakerspace.openai_utils.chatmodel import ChatOpenAI
+from openai_helper import DEFAULT_OPENAI_MODEL
 
 
 class DocumentProcessor:
@@ -460,7 +461,7 @@ class RAGSystem:
         except Exception as e:
             raise Exception(f"Error searching chunks: {str(e)}")
     
-    async def query_documents(self, query: str, k: int = 3, mode: str = "rag", model_name: str = "gpt-5-mini", system_message: Optional[str] = None) -> str:
+    async def query_documents(self, query: str, k: int = 3, mode: str = "rag", model_name: str = DEFAULT_OPENAI_MODEL, system_message: Optional[str] = None) -> str:
         """
         Query documents using RAG approach.
 
@@ -538,7 +539,7 @@ class RAGSystem:
             kwargs = {"web_search": False}  # RAG uses document context, not web search
             if mode == "topic-explorer":
                 # Only pass response_format for Together.ai models (Chat Completions API supports it).
-                # OpenAI GPT-5 models use the Responses API which does NOT support response_format.
+                # OpenAI GPT models use the Responses API which does NOT support response_format.
                 together_json_models = [
                     'deepseek-ai/DeepSeek-R1', 'deepseek-ai/DeepSeek-V3', 'deepseek-ai/DeepSeek-V3.1',
                     'meta-llama/Llama-3.3-70B-Instruct-Turbo',
@@ -554,7 +555,7 @@ class RAGSystem:
         except Exception as e:
             raise Exception(f"Error querying documents: {str(e)}")
     
-    def query(self, query: str, k: int = 3, mode: str = "rag", model_name: str = "gpt-5-mini", system_message: Optional[str] = None) -> str:
+    def query(self, query: str, k: int = 3, mode: str = "rag", model_name: str = DEFAULT_OPENAI_MODEL, system_message: Optional[str] = None) -> str:
         """
         Synchronous version of Query.
         
@@ -632,7 +633,7 @@ class RAGSystem:
             kwargs = {"web_search": False}  # RAG uses document context, not web search
             if mode == "topic-explorer":
                 # Only pass response_format for Together.ai models (Chat Completions API supports it).
-                # OpenAI GPT-5 models use the Responses API which does NOT support response_format.
+                # OpenAI GPT models use the Responses API which does NOT support response_format.
                 together_json_models = [
                     'deepseek-ai/DeepSeek-R1', 'deepseek-ai/DeepSeek-V3', 'deepseek-ai/DeepSeek-V3.1',
                     'meta-llama/Llama-3.3-70B-Instruct-Turbo',
