@@ -9,7 +9,7 @@ function App() {
   const [openaiApiKey, setOpenaiApiKey] = useState<string>('')
   const [togetherApiKey, setTogetherApiKey] = useState<string>('')
   const [theme, setTheme] = useState<'light' | 'dark'>('dark')
-  const [selectedModel, setSelectedModel] = useState<string>('gpt-5-nano')
+  const [selectedModel, setSelectedModel] = useState<string>('gpt-6-luna')
   const [selectedProvider, setSelectedProvider] = useState<string>('openai')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [settingsModalOpen, setSettingsModalOpen] = useState(false)
@@ -19,10 +19,10 @@ function App() {
   const [ttsVoice, setTtsVoice] = useState<string>('marin')
 
   const modelDescriptions = {
-    // OpenAI models - GPT-5 only
-    'gpt-5': 'Latest GPT-5 model',
-    'gpt-5-mini': 'Compact GPT-5 variant',
-    'gpt-5-nano': 'Ultra-lightweight GPT-5 (default)',
+    'gpt-6-luna': 'GPT-6 Luna · Efficient everyday chat (default)',
+    'gpt-6.1-terra': 'GPT-6.1 Terra · Visual reasoning and writing',
+    'gpt-6.1-sol': 'GPT-6.1 Sol · Complex reasoning and coding',
+    'gpt-6-astra': 'GPT-6 Astra · Most demanding tasks',
     // Together.ai models
     'deepseek-ai/DeepSeek-R1': 'DeepSeek R1 reasoning model',
     'deepseek-ai/DeepSeek-V3': 'DeepSeek V3 reasoning model',
@@ -99,7 +99,7 @@ function App() {
     if (newProvider === 'together') {
       setSelectedModel('deepseek-ai/DeepSeek-V3.1')
     } else {
-      setSelectedModel('gpt-5-nano')
+      setSelectedModel('gpt-6-luna')
     }
   }, [selectedProvider])
 
